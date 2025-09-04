@@ -1,0 +1,304 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Wave Packet Tiling Game (Multi-size Tiles)</title>
+  <style>
+    :root {
+      --bg: #0f172a; /* slate-900 */
+      --panel: #111827; /* gray-900 */
+      --ink: #e5e7eb; /* gray-200 */
+      --muted: #9ca3af; /* gray-400 */
+      --accent: #60a5fa; /* blue-400 */
+    }
+    html, body { height: 100%; margin: 0; font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Apple Color Emoji", "Segoe UI Emoji"; color: var(--ink); background: linear-gradient(180deg, #0b1220 0%, #0f172a 100%); }
+    .wrap { max-width: 1100px; margin: 24px auto 40px auto; padding: 0 16px; }
+    header h1 { margin: 0 0 6px 0; font-size: 28px; letter-spacing: 0.3px; }
+    header p { margin: 4px 0 18px 0; color: var(--muted); line-height: 1.4; }
+    .board { display: grid; grid-template-columns: 300px 1fr; gap: 16px; align-items: start; }
+    .panel { background: rgba(17, 24, 39, 0.8); border: 1px solid rgba(148, 163, 184, 0.15); border-radius: 16px; box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35); padding: 14px; position: relative; }
+    .controls h2 { margin: 4px 0 8px 0; font-size: 16px; color: #cbd5e1; }
+    .controls .hint { color: var(--muted); font-size: 13px; margin-bottom: 8px; }
+    .btn { -webkit-tap-highlight-color: transparent; cursor: pointer; display: inline-block; margin: 6px 6px 0 0; padding: 8px 10px; font-size: 12px; border-radius: 10px; border: 1px solid rgba(148, 163, 184, 0.25); background: linear-gradient(180deg, rgba(30,41,59,0.9), rgba(15,23,42,0.9)); color: #e5e7eb; transition: transform 0.05s ease, border-color 0.2s ease, background 0.2s ease; }
+    .btn:hover { border-color: rgba(148, 163, 184, 0.5); }
+    .btn:active { transform: translateY(1px); }
+    .kpi { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 12px; }
+    .kpi .card { border-radius: 12px; border: 1px dashed rgba(148, 163, 184, 0.35); padding: 10px; text-align: center; }
+    .kpi .big { font-size: 22px; font-weight: 700; letter-spacing: 0.3px; }
+    .legend { font-size: 13px; color: var(--muted); margin-top: 8px; line-height: 1.4; }
+    canvas { display: block; width: 100%; height: auto; border-radius: 14px; }
+    .surface { position: relative; }
+    .status-badge { position: absolute; right: 10px; top: 10px; background: rgba(2,6,23,0.9); border: 1px solid rgba(148,163,184,0.2); color: #d1fae5; padding: 6px 10px; font-size: 13px; border-radius: 999px; box-shadow: 0 8px 20px rgba(0,0,0,0.35); }
+    #concepts { margin-top: 20px; background: rgba(17, 24, 39, 0.8); border-radius: 16px; border: 1px solid rgba(148, 163, 184, 0.15); padding: 16px; }
+    #concepts h2 { margin: 6px 0 12px 0; font-size: 18px; }
+    .concept-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+    .concept { border-radius: 12px; border: 1px solid rgba(148, 163, 184, 0.2); padding: 12px 14px; background: linear-gradient(180deg, rgba(30,41,59,0.7), rgba(15,23,42,0.7)); }
+    .concept h3 { margin: 6px 0 6px 0; font-size: 16px; color: #cbd5e1; }
+    .concept p { margin: 6px 0; font-size: 14px; line-height: 1.55; color: #e5e7eb; word-break: break-word; }
+    .palette { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 8px; }
+    .groupLabel { font-size: 12px; color: #a1a1aa; margin: 4px 0 2px 0; }
+    @media (max-width: 900px) { .board { grid-template-columns: 1fr; } .kpi { grid-template-columns: 1fr 1fr; } .concept-grid { grid-template-columns: 1fr; } }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <header>
+      <h1>Wave Packet Tiling Game</h1>
+      <p>Drag small rectangles (tiles) onto the time–frequency plane to cover the red "signal" band. All tiles have the same area (Heisenberg uncertainty). Choose from many aspect ratios (from long–narrow to short–wide). Try to achieve high coverage with as few tiles as possible.</p>
+    </header>
+
+    <section class="board">
+      <aside class="panel controls" aria-label="Controls">
+        <h2>Tiles</h2>
+        <div class="hint">All tiles share the same area. Pick a size to add a tile, then drag it on the board. Right‑click a tile to delete it.</div>
+        <div id="palette" class="palette" aria-label="Tile palette"></div>
+        <div>
+          <button id="check" class="btn">Check Coverage</button>
+          <button id="resetTiles" class="btn">Reset Tiles</button>
+          <button id="newSignal" class="btn">New Signal</button>
+        </div>
+        <div class="kpi">
+          <div class="card">
+            <div class="big" id="coverage">0%</div>
+            <div class="legend">Coverage</div>
+          </div>
+          <div class="card">
+            <div class="big" id="tileCount">0</div>
+            <div class="legend">Tiles used</div>
+          </div>
+        </div>
+        <div class="legend" style="margin-top:10px">Uncertainty area (width × height) is constant: <strong id="areaInfo">4800 px²</strong>.</div>
+        <div class="legend">Axes: horizontal = time, vertical = frequency.</div>
+        <div class="legend">Tip: Align tiles along the red band to maximize coverage.</div>
+      </aside>
+
+      <div class="panel surface">
+        <div id="status" class="status-badge">Place tiles to cover the signal</div>
+        <canvas id="board" width="900" height="520" aria-label="Time–frequency board"></canvas>
+      </div>
+    </section>
+
+    <section id="concepts" class="panel" aria-label="Concepts">
+      <h2>Concepts (No overlap of text below)</h2>
+      <div class="concept-grid">
+        <div class="concept" aria-label="Gabor Decomposition">
+          <h3>Gabor Decomposition</h3>
+          <p>Gabor analysis represents a signal as a sum of time–frequency atoms (windowed sinusoids). Each atom is localized in time and frequency, and the collection of atoms tiles the time–frequency plane. Your rectangles mimic these atoms.</p>
+        </div>
+        <div class="concept" aria-label="Uncertainty Principle">
+          <h3>Uncertainty Principle</h3>
+          <p>The Heisenberg uncertainty principle states that time spread and frequency spread cannot both be arbitrarily small: their product has a positive lower bound. In the game, every tile has the same area, reflecting this constraint.</p>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <script>
+    // === Configuration ===
+    const CANVAS_W = 900;
+    const CANVAS_H = 520;
+    const GRID_SPACING = 40;
+
+    // Same area for all tiles (Heisenberg-type constraint)
+    const TILE_AREA = 4800;
+
+    // Rich palette of sizes (all w*h = 4800)
+    const SHAPE_LIST = [
+      // sizes requested
+      { w: 240, h: 20 }, { w: 20, h: 240 },
+      { w: 30,  h: 160 }, { w: 80, h: 60 },
+      { w: 480, h: 10 },  { w: 10, h: 480 },
+      // existing
+      { w: 160, h: 30 },  { w: 60, h: 80 },
+      // extra variety
+      { w: 120, h: 40 },  { w: 40, h: 120 },
+      { w: 96,  h: 50 },  { w: 50, h: 96  },
+      { w: 75,  h: 64 },  { w: 64, h: 75  },
+      { w: 48,  h: 100 }, { w: 100,h: 48  },
+      { w: 32,  h: 150 }, { w: 150,h: 32  },
+      { w: 24,  h: 200 }, { w: 200,h: 24  },
+      { w: 16,  h: 300 }, { w: 300,h: 16  },
+      { w: 12,  h: 400 }, { w: 400,h: 12  }
+    ];
+
+    const COVERAGE_GOAL = 0.85; // 85%
+
+    // === State ===
+    const canvas = document.getElementById('board');
+    const ctx = canvas.getContext('2d');
+
+    const regionCanvas = document.createElement('canvas');
+    regionCanvas.width = CANVAS_W; regionCanvas.height = CANVAS_H;
+    const regionCtx = regionCanvas.getContext('2d');
+
+    const tilesCanvas = document.createElement('canvas');
+    tilesCanvas.width = CANVAS_W; tilesCanvas.height = CANVAS_H;
+    const tilesCtx = tilesCanvas.getContext('2d');
+
+    let tiles = []; // {id, x, y, w, h}
+    let draggingId = null; let dragDX = 0, dragDY = 0;
+    let signalSeed = Math.random();
+
+    const coverageEl = document.getElementById('coverage');
+    const tileCountEl = document.getElementById('tileCount');
+    const statusEl = document.getElementById('status');
+    const areaInfoEl = document.getElementById('areaInfo');
+    areaInfoEl.textContent = TILE_AREA + ' px²';
+
+    // === Signal drawing ===
+    function drawSignalRegion(seed = 0.5) {
+      regionCtx.clearRect(0, 0, CANVAS_W, CANVAS_H);
+      const base = CANVAS_H * (0.35 + 0.25 * Math.abs(Math.sin(seed * Math.PI * 2)));
+      const amp = 80 + 40 * Math.cos(seed * 2 * Math.PI);
+      const f0 = 0.7 + 0.3 * (seed % 1);
+      const f1 = 4.5 + 2.5 * (1 - seed);
+      const thickness = 42;
+      regionCtx.save();
+      regionCtx.lineCap = 'round'; regionCtx.lineJoin = 'round';
+      regionCtx.strokeStyle = 'rgba(255,0,0,1)';
+      regionCtx.lineWidth = thickness;
+      regionCtx.beginPath();
+      for (let x = 0; x <= CANVAS_W; x += 2) {
+        const u = x / CANVAS_W;
+        const y = base + amp * Math.sin(2 * Math.PI * (f0 + f1 * u) * u)
+          + 50 * (u - 0.5) * (u - 0.5) * (seed > 0.5 ? 1 : -1);
+        if (x === 0) regionCtx.moveTo(x, y); else regionCtx.lineTo(x, y);
+      }
+      regionCtx.stroke();
+      regionCtx.restore();
+    }
+
+    function drawVisibleBoard() {
+      const g = ctx.createLinearGradient(0, 0, 0, CANVAS_H);
+      g.addColorStop(0, 'rgba(2, 6, 23, 1)'); g.addColorStop(1, 'rgba(15, 23, 42, 1)');
+      ctx.fillStyle = g; ctx.fillRect(0, 0, CANVAS_W, CANVAS_H);
+      // grid
+      ctx.save(); ctx.strokeStyle = 'rgba(148,163,184,0.15)'; ctx.lineWidth = 1;
+      for (let x = 0; x <= CANVAS_W; x += GRID_SPACING) { ctx.beginPath(); ctx.moveTo(x + 0.5, 0); ctx.lineTo(x + 0.5, CANVAS_H); ctx.stroke(); }
+      for (let y = 0; y <= CANVAS_H; y += GRID_SPACING) { ctx.beginPath(); ctx.moveTo(0, y + 0.5); ctx.lineTo(CANVAS_W, y + 0.5); ctx.stroke(); }
+      ctx.restore();
+      // axes
+      ctx.save(); ctx.strokeStyle = 'rgba(96, 165, 250, 0.6)'; ctx.lineWidth = 2; ctx.beginPath();
+      ctx.moveTo(40, CANVAS_H - 40); ctx.lineTo(CANVAS_W - 10, CANVAS_H - 40);
+      ctx.moveTo(40, CANVAS_H - 40); ctx.lineTo(40, 10); ctx.stroke();
+      ctx.fillStyle = 'rgba(148, 163, 184, 0.9)'; ctx.font = '12px ui-sans-serif, system-ui';
+      ctx.fillText('time →', CANVAS_W - 70, CANVAS_H - 46);
+      ctx.save(); ctx.translate(14, 24); ctx.rotate(-Math.PI / 2); ctx.fillText('frequency ↑', 0, 0); ctx.restore();
+      ctx.restore();
+      // signal band
+      ctx.save(); ctx.globalAlpha = 0.55; ctx.drawImage(regionCanvas, 0, 0); ctx.restore();
+      // tiles
+      for (const t of tiles) drawTile(t);
+    }
+
+    function drawTile(t) {
+      ctx.save();
+      ctx.fillStyle = 'rgba(96, 165, 250, 0.15)';
+      ctx.fillRect(t.x, t.y, t.w, t.h);
+      ctx.strokeStyle = 'rgba(96, 165, 250, 0.9)'; ctx.lineWidth = 2;
+      ctx.strokeRect(t.x + 0.5, t.y + 0.5, t.w - 1, t.h - 1);
+      const cx = t.x + t.w / 2, cy = t.y + t.h / 2;
+      ctx.fillStyle = 'rgba(148,163,184,0.9)';
+      ctx.beginPath(); ctx.arc(cx, cy, 2.5, 0, Math.PI * 2); ctx.fill();
+      ctx.font = '12px ui-sans-serif, system-ui';
+      ctx.fillText(`${t.w}×${t.h}`, t.x + 6, t.y + t.h - 6);
+      ctx.restore();
+    }
+
+    // === Tile management ===
+    let nextId = 1;
+    function addTile(w, h) {
+      const pad = 10 + tiles.length * 6;
+      const x = Math.min(CANVAS_W - w - 2, 50 + pad);
+      const y = Math.min(CANVAS_H - h - 2, 60 + pad);
+      tiles.push({ id: nextId++, x, y, w, h });
+      updateHUD();
+      drawVisibleBoard();
+    }
+
+    function resetTiles() { tiles = []; updateHUD(); drawVisibleBoard(); }
+
+    // === Coverage ===
+    function renderTilesToOffscreen() {
+      tilesCtx.clearRect(0, 0, CANVAS_W, CANVAS_H);
+      tilesCtx.fillStyle = 'rgba(255,255,255,1)';
+      for (const t of tiles) tilesCtx.fillRect(Math.round(t.x), Math.round(t.y), Math.round(t.w), Math.round(t.h));
+    }
+    function computeCoverage() {
+      renderTilesToOffscreen();
+      const regionData = regionCtx.getImageData(0, 0, CANVAS_W, CANVAS_H).data;
+      const tilesData = tilesCtx.getImageData(0, 0, CANVAS_W, CANVAS_H).data;
+      let regionCount = 0, covered = 0; const step = 2;
+      for (let y = 0; y < CANVAS_H; y += step) {
+        for (let x = 0; x < CANVAS_W; x += step) {
+          const idx = (y * CANVAS_W + x) * 4 + 3; // alpha channel
+          const aR = regionData[idx]; if (aR > 10) { regionCount++; const aT = tilesData[idx]; if (aT > 10) covered++; }
+        }
+      }
+      return regionCount === 0 ? 0 : covered / regionCount;
+    }
+    function updateHUD(ratio = null) {
+      tileCountEl.textContent = String(tiles.length);
+      if (ratio === null) ratio = computeCoverage();
+      const pct = Math.round(ratio * 100); coverageEl.textContent = pct + '%';
+      if (ratio >= COVERAGE_GOAL) { statusEl.textContent = 'Great! You reached ' + pct + '% coverage.'; statusEl.style.color = '#bbf7d0'; }
+      else { statusEl.textContent = 'Coverage: ' + pct + '% (goal: ' + Math.round(COVERAGE_GOAL * 100) + '%)'; statusEl.style.color = '#d1fae5'; }
+    }
+
+    // === Interactions ===
+    function tileAt(x, y) {
+      for (let i = tiles.length - 1; i >= 0; i--) { const t = tiles[i]; if (x >= t.x && x <= t.x + t.w && y >= t.y && y <= t.y + t.h) return t.id; } return null;
+    }
+    canvas.addEventListener('mousedown', (e) => {
+      const rect = canvas.getBoundingClientRect();
+      const x = (e.clientX - rect.left) * (CANVAS_W / rect.width);
+      const y = (e.clientY - rect.top) * (CANVAS_H / rect.height);
+      const id = tileAt(x, y);
+      if (id !== null) { draggingId = id; const t = tiles.find(s => s.id === id); dragDX = x - t.x; dragDY = y - t.y; }
+    });
+    window.addEventListener('mousemove', (e) => {
+      if (draggingId === null) return;
+      const rect = canvas.getBoundingClientRect();
+      const x = (e.clientX - rect.left) * (CANVAS_W / rect.width);
+      const y = (e.clientY - rect.top) * (CANVAS_H / rect.height);
+      const t = tiles.find(s => s.id === draggingId); if (!t) return;
+      t.x = Math.max(0, Math.min(CANVAS_W - t.w, x - dragDX));
+      t.y = Math.max(0, Math.min(CANVAS_H - t.h, y - dragDY));
+      drawVisibleBoard(); updateHUD();
+    });
+    window.addEventListener('mouseup', () => { draggingId = null; });
+    canvas.addEventListener('contextmenu', (e) => {
+      e.preventDefault();
+      const rect = canvas.getBoundingClientRect();
+      const x = (e.clientX - rect.left) * (CANVAS_W / rect.width);
+      const y = (e.clientY - rect.top) * (CANVAS_H / rect.height);
+      const id = tileAt(x, y);
+      if (id !== null) { tiles = tiles.filter(t => t.id !== id); drawVisibleBoard(); updateHUD(); }
+    });
+
+    // === Controls ===
+    function buildPalette() {
+      const holder = document.getElementById('palette'); holder.innerHTML = '';
+      SHAPE_LIST.forEach(({w,h}) => {
+        const btn = document.createElement('button');
+        btn.className = 'btn';
+        btn.textContent = `${w}×${h}`;
+        btn.title = `Add ${w}×${h} (area ${TILE_AREA})`;
+        btn.addEventListener('click', () => addTile(w, h));
+        holder.appendChild(btn);
+      });
+    }
+
+    document.getElementById('resetTiles').addEventListener('click', resetTiles);
+    document.getElementById('check').addEventListener('click', () => { const ratio = computeCoverage(); updateHUD(ratio); statusEl.style.transform = 'scale(1.03)'; setTimeout(() => statusEl.style.transform = 'scale(1)', 120); });
+    document.getElementById('newSignal').addEventListener('click', () => { signalSeed = Math.random(); drawSignalRegion(signalSeed); resetTiles(); drawVisibleBoard(); updateHUD(); });
+
+    // === Init ===
+    buildPalette();
+    drawSignalRegion(signalSeed);
+    drawVisibleBoard();
+    updateHUD();
+  </script>
+</body>
+</html>
